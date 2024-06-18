@@ -32,7 +32,7 @@ DB_PASSWORD=
 DB_NAME=
 ```
 
-## Future
+## Future Plans
 
 - Team ownership transfer
 - Calendar
