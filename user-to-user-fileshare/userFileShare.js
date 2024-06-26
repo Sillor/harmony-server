@@ -3,7 +3,6 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { Console } = require('console');
 
 //need to add a remove chat directory for when chats get deleted
 // need to use function for GET User id or GET team id
@@ -67,8 +66,7 @@ const storage = multer.diskStorage({
         cb(null, req.serverUploadPath);
     },
     filename: function (req, file, cb) { 
-        let cleanName = cleanFileName(file.originalname)
-        console.log("thi sis the file name", cleanName, "EXTRNSION",cleanName.extension)
+       let cleanName = cleanFileName(file.originalname)
         const uniqueSuffix = Date.now();
         cb(null, cleanName.name+ '-id-'+ uniqueSuffix + '.' + cleanName.extension );
     }
@@ -84,7 +82,7 @@ router.post('/upload/:chatId', upload.single('file'), async (req, res) => {
         const userID = await findUID(req.user, req)
         const {chatId} = req.params
         let fileNameSplit = req.file.filename.split(/-id-(.*?)\./)
-        let fileUid = fileNameSplit[1]
+        let fileUid = fileNameSplit[1] 
 
         await req.db.query(
         `INSERT INTO files ( uid, name, ownerID, deleted)
@@ -99,18 +97,19 @@ router.post('/upload/:chatId', upload.single('file'), async (req, res) => {
       5/22/24 TypeError: req.socket.to is not a function
       -Lawrence: Not sure what this error is, I commented this part out 
                  so that I could send info to the front end */  
-        req.socket.to("online:" + chatId).emit("update:file_added", {
+
+      /*   req.socket.to("online:" + chatId).emit("update:file_added", {
         team: chatId,
         filename: req.file.originalname,
         user: req.user.username
-      });    
+      });     */
       
         return res.json({ 'filename': req.file.originalname, 'data': req.file, 'UID': fileUid });
     } catch(err) { 
         console.error(err);
         return
     }
-}); 
+});
 
 router.get('/getFileInfo/:chatId/:fileId', async (req, res) => {
     const {fileId} = req.params;
@@ -204,11 +203,11 @@ router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) =
         fs.copyFileSync(sourcePath, destPath)
     }
 
-    req.socket.to("online:" + chatId).emit("update:file_added", {
+   /*  req.socket.to("online:" + chatId).emit("update:file_added", {
       team: chatId, 
       filename: fileName,
       user: req.user.username
-    });
+    }); */
 
     return res.json({'status': 200, 'message': 'Copy success', 'file': `${fileName}-id-${fileId}${fileCopyValue}.${fileType}`})
 })
@@ -220,14 +219,13 @@ router.delete('/delete/:chatId/:fileName/:fileId/:fileType', (req, res) => {
         const filePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
         console.log("filepath", filePath)
         fs.unlinkSync(filePath);
-        console.log("deleting file", fileId)
 
-        req.socket.to("online:" + chatId).emit("update:file_removed", {
+       /*  req.socket.to("online:" + chatId).emit("update:file_removed", {
           team: chatId,
           filename: fileName,
           user: req.user.username
         });
- 
+  */
         return res.json({'message': 'success', 'status': 200})
 
     } catch(err) {
@@ -285,15 +283,16 @@ function cleanFileName(dir) {
         extension: ""
       }
     }              
-    const match = dir.match(/^([a-zA-Z0-9]+)(-id-)(\d+)(?:\((\d+)\))?\.([a-zA-Z0-9]+)$/)
+    
+    const match = dir.match(/^([a-zA-Z0-9._-]+?)(?:-id-(\d+))?(?: ?\((\d+)\))?\.([a-zA-Z0-9]+)$/)
 
-    const fileName = match[1]
-    const fileId = match[3] ? Number(match[3]) : null
-    const fileCopy = match[4] ? Number(match[4]) : -1
-    const fileExtension = match[5]
+    const fileName = match[1] 
+    const fileId = match[2] ? Number(match[2]) : null
+    const fileCopy = match[3] ? Number(match[3]) : -1
+    const fileExtension = match[4]
 
     return {
-      name: fileName,
+      name: fileName, 
       id: fileId,
       copy: fileCopy,
       extension: fileExtension
