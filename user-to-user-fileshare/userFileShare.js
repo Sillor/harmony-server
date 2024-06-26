@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { Console } = require('console');
 
 //need to add a remove chat directory for when chats get deleted
 // need to use function for GET User id or GET team id
@@ -67,6 +68,7 @@ const storage = multer.diskStorage({
     },
     filename: function (req, file, cb) { 
         let cleanName = cleanFileName(file.originalname)
+        console.log("thi sis the file name", cleanName, "EXTRNSION",cleanName.extension)
         const uniqueSuffix = Date.now();
         cb(null, cleanName.name+ '-id-'+ uniqueSuffix + '.' + cleanName.extension );
     }
@@ -139,13 +141,12 @@ router.get('/download/:chatId/:fileId', async (req, res) => {
 });
 
 //file rename route
-router.post('/rename/:chatId/:fileName', (req, res) => {
-    const {chatId, fileName} = req.params;
+router.post('/rename/:chatId/:fileName/:fileId/:fileType', (req, res) => {
+    const {chatId, fileName, fileId, fileType} = req.params;
     const newFileName = req.body.newFileName;
-    const fileType = fileName.split('.')[1];
     
-    const oldFilePath = `${uploadDir}/${chatId}/${fileName}`;
-    const newFilePath = `${uploadDir}/${chatId}/${newFileName}.${fileType}`;
+    const oldFilePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
+    const newFilePath = `${uploadDir}/${chatId}/${newFileName}-id-${fileId}.${fileType}`;
     let chatDir = fs.readdirSync(`${uploadDir}/${chatId}`);
     
     if(chatDir.includes(`${newFileName}.${fileType}`)){
@@ -159,34 +160,36 @@ router.post('/rename/:chatId/:fileName', (req, res) => {
 })
 
 //file duplicate route
-router.post('/duplicate/:chatId/:fileName', async (req, res) => {
-    const { chatId, fileName } = req.params;
-    const sourcePath = `${uploadDir}/${chatId}/${fileName}`;
+router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) => {
+    const { chatId, fileName, fileId, fileType } = req.params;
+    const sourcePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
+    let dirtyFileName = `${fileName}-id-${fileId}.${fileType}`;
     let destPath;
-    //regex targets comma, period and square bracket
-    let cleanName = cleanFileName(fileName);
+    //regex targets comma, period and square bracket 
+    let cleanName = cleanFileName(dirtyFileName);
     //scan directory for files
     let chatDir = fs.readdirSync(`${uploadDir}/${chatId}`);
     //finds amount of file copies in directory
-    let fileCopiesArray = chatDir.filter(file => file.match(cleanName.name+"-id-"));
+    let fileCopiesArray = chatDir.filter(file => file.match(cleanName.id));
     fileCopiesArray.sort((a, b) =>
     a.localeCompare(b, "en-US", { numeric: true, ignorePunctuation: true })
     ).reverse(); 
     let latestCopy;
-    let fileCopyValue;
-
+    let fileCopyValue; 
+    console.log("copying fn/duplicating wwww",fileCopiesArray, cleanName, fileId)
+ 
     //split filename -id- uid
     if(fileCopiesArray.length === 1){
         //if you click on a root file with no copies
         if(cleanName.copy === -1){
             //if it has no copy number
-                destPath = `${uploadDir}/${chatId}/${cleanName.name}(1).${cleanName.extension}`;
-            } else {
+                destPath = `${uploadDir}/${chatId}/${fileName}-id-${cleanName.id}(1).${fileType}`;
+            } else { 
             //if it has a copy number
                 fileCopyValue = Number(cleanName.copy) + 1;
-                destPath = `${uploadDir}/${chatId}/${cleanName.name}(${fileCopyValue}).${cleanName.extension}`;
+                destPath = `${uploadDir}/${chatId}/${fileName}-id-${cleanName.id}(${fileCopyValue}).${fileType}`;
         }
-        fs.copyFileSync(sourcePath, destPath)
+        fs.copyFileSync(sourcePath, destPath) 
 
     }else if(fileCopiesArray.length >= 2){
         latestCopy = cleanFileName(fileCopiesArray[1]);
@@ -194,29 +197,29 @@ router.post('/duplicate/:chatId/:fileName', async (req, res) => {
 
         if(cleanName.copy === -1){
         //if you click on root file that already has copies
-            destPath = `${uploadDir}/${chatId}/${cleanName.name}(${fileCopyValue}).${cleanName.extension}`;
+            destPath = `${uploadDir}/${chatId}/${fileName}-id-${cleanName.id}(${fileCopyValue}).${fileType}`;
         } else {
-        //if you click on a copy
-            destPath = `${uploadDir}/${chatId}/${cleanName.name}(${fileCopyValue}).${cleanName.extension}`;
+        //if you click on a copy 
+            destPath = `${uploadDir}/${chatId}/${fileName}-id-${cleanName.id}(${fileCopyValue}).${fileType}`;
         }
         fs.copyFileSync(sourcePath, destPath)
     }
 
-    req.socket.to("online:" + chatId).emit("update:file_added", {
-      team: chatId,
+   /*  req.socket.to("online:" + chatId).emit("update:file_added", {
+      team: chatId, 
       filename: fileName,
       user: req.user.username
-    });
+    }); */
 
-    return res.json({'status': 200, 'message': 'Copy success', 'file': fileName})
+    return res.json({'status': 200, 'message': 'Copy success', 'file': `${fileName}-id-${fileId}${fileCopyValue}.${fileType}`})
 })
 
 //file delete route
-router.delete('/delete/:chatId/:fileName', (req, res) => {
+router.delete('/delete/:chatId/:fileName/:fileId', (req, res) => {
     try{
-        const {chatId, fileName} = req.params;
-        const filePath = `${uploadDir}/${chatId}/${fileName}`;
-        
+        const {chatId, fileName, fileId} = req.params;
+        const filePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.pdf`;
+        console.log("filepath", filePath)
         fs.unlinkSync(filePath);
 
         req.socket.to("online:" + chatId).emit("update:file_removed", {
@@ -244,7 +247,7 @@ router.get('/list/:chatId', async (req, res) => {
             let data = fs.statSync(path.join(__dirname, `../uploads/${chatId}/${fileName.name}`));
             fileProps.push(data)
         }
-         
+        
         fileInfo = {files, dirName: [`uploads`,`${chatId}`]}
         if(!fileInfo.properties){
             fileInfo = {...fileInfo, properties: fileProps};
@@ -252,7 +255,7 @@ router.get('/list/:chatId', async (req, res) => {
         return res.json(fileInfo)
     }catch(err){
         return res.json({'error': `error in server ${err}`})
-    }
+    } 
     
 });
 
@@ -280,13 +283,14 @@ function cleanFileName(dir) {
         copy: -1,
         extension: ""
       }
-    }
-    const match = dir.match(/^([a-zA-Z0-9._-]+)(?: ?\((\d+)\))?\.([a-zA-Z0-9]+)$/)
-
+    }                // match(/^([a-zA-Z]+)(-id-)(\d+)(?:\((\d+)\))\.([a-zA-Z0-9]+)$/)
+    const match = dir.match(/^([a-zA-Z]+)(-id-)(\d+)(?:\((\d+)\))?\.([a-zA-Z0-9]+)$/)
+    
+    console.log("file name in clean file naem fn", match, dir)
     const fileName = match[1]
-    const fileId = match[2] ? Number(match[2]) : null
-    const fileCopy = match[3] ? Number(match[3]) : -1
-    const fileExtension = match[4]
+    const fileId = match[3] ? Number(match[3]) : null
+    const fileCopy = match[4] ? Number(match[4]) : -1
+    const fileExtension = match[5]
     return {
       name: fileName,
       id: fileId,
