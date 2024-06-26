@@ -98,12 +98,12 @@ router.post('/upload/:chatId', upload.single('file'), async (req, res) => {
       /* 
       5/22/24 TypeError: req.socket.to is not a function
       -Lawrence: Not sure what this error is, I commented this part out 
-                 so that I could send info to the front end
+                 so that I could send info to the front end */  
         req.socket.to("online:" + chatId).emit("update:file_added", {
         team: chatId,
         filename: req.file.originalname,
         user: req.user.username
-      });     */  
+      });    
       
         return res.json({ 'filename': req.file.originalname, 'data': req.file, 'UID': fileUid });
     } catch(err) { 
@@ -176,7 +176,6 @@ router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) =
     ).reverse(); 
     let latestCopy;
     let fileCopyValue; 
-    console.log("copying fn/duplicating wwww",fileCopiesArray, cleanName, fileId)
  
     //split filename -id- uid
     if(fileCopiesArray.length === 1){
@@ -205,28 +204,30 @@ router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) =
         fs.copyFileSync(sourcePath, destPath)
     }
 
-   /*  req.socket.to("online:" + chatId).emit("update:file_added", {
+    req.socket.to("online:" + chatId).emit("update:file_added", {
       team: chatId, 
       filename: fileName,
       user: req.user.username
-    }); */
+    });
 
     return res.json({'status': 200, 'message': 'Copy success', 'file': `${fileName}-id-${fileId}${fileCopyValue}.${fileType}`})
 })
 
 //file delete route
-router.delete('/delete/:chatId/:fileName/:fileId', (req, res) => {
+router.delete('/delete/:chatId/:fileName/:fileId/:fileType', (req, res) => {
     try{
-        const {chatId, fileName, fileId} = req.params;
-        const filePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.pdf`;
+        const {chatId, fileName, fileId, fileType} = req.params;
+        const filePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
         console.log("filepath", filePath)
         fs.unlinkSync(filePath);
+        console.log("deleting file", fileId)
 
         req.socket.to("online:" + chatId).emit("update:file_removed", {
           team: chatId,
           filename: fileName,
           user: req.user.username
         });
+ 
         return res.json({'message': 'success', 'status': 200})
 
     } catch(err) {
@@ -283,14 +284,14 @@ function cleanFileName(dir) {
         copy: -1,
         extension: ""
       }
-    }                // match(/^([a-zA-Z]+)(-id-)(\d+)(?:\((\d+)\))\.([a-zA-Z0-9]+)$/)
-    const match = dir.match(/^([a-zA-Z]+)(-id-)(\d+)(?:\((\d+)\))?\.([a-zA-Z0-9]+)$/)
-    
-    console.log("file name in clean file naem fn", match, dir)
+    }              
+    const match = dir.match(/^([a-zA-Z0-9]+)(-id-)(\d+)(?:\((\d+)\))?\.([a-zA-Z0-9]+)$/)
+
     const fileName = match[1]
     const fileId = match[3] ? Number(match[3]) : null
     const fileCopy = match[4] ? Number(match[4]) : -1
     const fileExtension = match[5]
+
     return {
       name: fileName,
       id: fileId,
