@@ -78,20 +78,32 @@ router.post("/createTeam", async function (req, res) {
     try {
         const UID = Array.from(Array(254), () => Math.floor(Math.random() * 36).toString(36)).join('');
         const UserID = await findUID(req.user, req);
-        const linkedName = req.body.teamName.toLowerCase().replaceAll(" ", "-")
+        const linkedName = req.body.teamName.toLowerCase().replaceAll(" ", "-");
+        const teamName = req.body.teamName;
 
         //Optional: Create a duplicate uid prevention function
 
         await req.db.query(
             `INSERT INTO teams (uid , ownerID , teamCallLink , name , deleted)
-            VALUES (:uid , :ownerID , :callLink , :name , false)`,
+            VALUES (:uid , :ownerID , :callLink , :name , false);`,
             {
                 uid: UID,
                 ownerID: UserID,
                 callLink: `${linkedName}/${UID}`,
-                name: req.body.teamName
+                name: teamName
             }
         );
+
+        const teamID = await findTeamID(UID, teamName, req);
+
+        await req.db.query(
+            `INSERT INTO teamsLinks(teamID , addUser , deleted) 
+            VALUES(:teamID , :addUser , false);`,
+            {
+                teamID: teamID,
+                addUser: UserID
+            }
+        )
 
         res.status(200).json({ "success": true })
     } catch (error) {
@@ -154,8 +166,14 @@ router.get("/loadJoinedTeams", async function (req, res) {
             element.owned = false
         });
 
+        //extract ids from ownedTeamArr
+        const ownedTeamsIdArr = ownedTeamsArr.map(team => team.uid);
+
+        //filter joined teams to avoid duplicates from owned teams
+        const filteredJoinedTeamsArr = joinedTeamsArr.filter(team => !ownedTeamsIdArr.includes(team.uid));
+
         //append teams together
-        const teamList = [...ownedTeamsArr, ...joinedTeamsArr]
+        const teamList = [...ownedTeamsArr, ...filteredJoinedTeamsArr]
 
         res.status(200).json({ "success": true, "data": teamList })
     } catch (error) {
@@ -309,10 +327,14 @@ router.post("/loadTeamMemberList", async function (req, res) {
             }
         );
 
-        const membersListFinal = membersList.map((entry) => {return {...entry, owner : false}});
+        //filter membersList to avoid duplicates from ownerList
+        const filteredMembersList = membersList.filter(member => 
+            !ownerList.some(owner => owner.username === member.username && owner.email === member.email)
+        );
+
+        const membersListFinal = filteredMembersList.map((entry) => {return {...entry, owner : false}});
         const ownerListFinal = ownerList.map((entry) => {return {...entry, owner : true}});
         const finalList = [...membersListFinal , ...ownerListFinal];
-
 
         res.status(200).json({ "success": true , "data" : finalList})
     } catch (error) {
