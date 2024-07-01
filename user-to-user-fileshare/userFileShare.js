@@ -161,7 +161,7 @@ router.post('/rename/:chatId/:fileName/:fileId/:fileType', (req, res) => {
 //file duplicate route
 router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) => {
     const { chatId, fileName, fileId, fileType } = req.params;
-    const userID = findUID(req.user, req)
+    const userID = await findUID(req.user, req)
     const sourcePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
     let dirtyFileName = `${fileName}-id-${fileId}.${fileType}`;
     let destPath;
