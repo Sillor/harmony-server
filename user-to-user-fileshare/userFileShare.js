@@ -175,6 +175,15 @@ router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) =
     ).reverse(); 
     let latestCopy;
     let fileCopyValue; 
+
+    await req.db.query(
+        `INSERT INTO files ( uid, name, ownerID, deleted)
+        VALUES ( :uid, :name, ${userID}, false)`,
+        {
+            uid: fileId,
+            name: req.file.originalname
+        }
+        );
  
     //split filename -id- uid
     if(fileCopiesArray.length === 1){
