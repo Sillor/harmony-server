@@ -142,7 +142,7 @@ router.get('/download/:chatId/:fileId', async (req, res) => {
 //file rename route
 router.post('/rename/:chatId/:fileName/:fileId/:fileType', (req, res) => {
     const {chatId, fileName, fileId, fileType} = req.params;
-    const newFileName = req.body.newFileName;
+        const newFileName = req.body.newFileName;
     
     const oldFilePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
     const newFilePath = `${uploadDir}/${chatId}/${newFileName}-id-${fileId}.${fileType}`;
@@ -161,6 +161,7 @@ router.post('/rename/:chatId/:fileName/:fileId/:fileType', (req, res) => {
 //file duplicate route
 router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) => {
     const { chatId, fileName, fileId, fileType } = req.params;
+    const userID = findUID(req.user, req)
     const sourcePath = `${uploadDir}/${chatId}/${fileName}-id-${fileId}.${fileType}`;
     let dirtyFileName = `${fileName}-id-${fileId}.${fileType}`;
     let destPath;
