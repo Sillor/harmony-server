@@ -176,16 +176,8 @@ router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) =
     ).reverse(); 
     let latestCopy;
     let fileCopyValue; 
+    
 
-    await req.db.query(
-        `INSERT INTO files ( uid, name, ownerID, deleted)
-        VALUES ( :uid, :name, ${userID}, false)`,
-        {
-            uid: fileId,
-            name: req.file.originalname
-        }
-        );
- 
     //split filename -id- uid
     if(fileCopiesArray.length === 1){
         //if you click on a root file with no copies
@@ -212,6 +204,15 @@ router.post('/duplicate/:chatId/:fileName/:fileId/:fileType', async (req, res) =
         }
         fs.copyFileSync(sourcePath, destPath)
     }
+    await req.db.query(
+      `INSERT INTO files ( uid, name, ownerID, deleted)
+      VALUES ( :uid, :name, :ownerID, false)`,
+      {
+          uid: cleanName.id + (fileCopyValue ? "(" + fileCopyValue + ")" : "(1)"),
+          name: fileName + "." + fileType,
+          ownerID: userID,
+      }
+    );
 
    /*  req.socket.to("online:" + chatId).emit("update:file_added", {
       team: chatId, 
