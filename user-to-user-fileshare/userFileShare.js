@@ -151,6 +151,20 @@ router.post('/rename/:chatId/:fileName/:fileId/:fileType', (req, res) => {
     if(chatDir.includes(`${newFileName}.${fileType}`)){
        return res.json({"success": false, "status": 400, "message": `${newFileName} exists`});
     }
+
+    try {
+      req.db.query(`
+        UPDATE files
+        SET name = :newFileName
+        WHERE uid = :fileId;`,
+        {
+          newFileName: newFileName + "." + fileType,
+          fileId
+        });
+    } catch (err) {
+      console.error(err);
+      return res.json({"success": false, "status": 400, "message": `Error changing file name`});
+    }
     
     fs.rename(oldFilePath, newFilePath, (err) => {
         if (err) throw err;
