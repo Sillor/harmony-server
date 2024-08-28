@@ -93,7 +93,6 @@ authorize().then(listFiles).catch(console.error);
  * Create a folder and prints the folder ID
  * @return{obj} folder Id
  * */
-
 async function createFolder() {
   // Get credentials and build service
   // TODO (developer) - Use appropriate auth mechanism for your app
@@ -121,6 +120,77 @@ async function createFolder() {
     throw err;
   }
 }
+
+/**
+ * Downloads a file
+ * @param{string} realFileId file ID
+ * @return{obj} file status
+ * */
+async function downloadFile(realFileId) {
+  // Get credentials and build service
+  // TODO (developer) - Use appropriate auth mechanism for your app
+
+  const {GoogleAuth} = require('google-auth-library');
+  const {google} = require('googleapis');
+
+  const auth = new GoogleAuth({
+    scopes: 'https://www.googleapis.com/auth/drive',
+  });
+  const service = google.drive({version: 'v3', auth});
+
+  fileId = realFileId;
+  try {
+    const file = await service.files.get({
+      fileId: fileId,
+      alt: 'media',
+    });
+    console.log(file.status);
+    return file.status;
+  } catch (err) {
+    // TODO(developer) - Handle error
+    throw err;
+  }
+} 
+
+//Mark file as trash
+async function markTrash(){
+  const body_value = {
+    'trashed': True
+  };
+
+  const response = await drive_service.files.update({
+        fileId: 'FILE_ID',
+        requestBody: body_value,
+      });
+      return response;
+}
+
+/**
+ * 
+ 1. To share a file in My Drive, the user must have role=writer or role=owner.
+
+    -If the writersCanShare boolean value is set to False for the file, the user must have role=owner.
+
+    -If the user with role=writer has temporary access governed by an expiration date and time, they can't share the file. For more information, see Set an expiration date to limit file access.
+
+  2. To share a folder in My Drive, the user must have role=writer or role=owner.
+
+    -If the writersCanShare boolean value is set to False for the file, the user must have the more permissive role=owner.
+
+    -Temporary access (governed by an expiration date and time) isn't allowed on My Drive folders with role=writer. For more information, see Set an expiration date to limit file access.
+
+  3. To share a file in a shared drive, the user must have role=writer, role=fileOrganizer, or role=organizer.
+
+      -The writersCanShare setting doesn't apply to items in shared drives. It's treated as if it's always set to True.
+  
+  4. To share a folder in a shared drive, the user must have role=organizer.
+
+      -If the sharingFoldersRequiresOrganizerPermission restriction on a shared drive is set to False, users with role=fileOrganizer can share folders in that shared drive.
+
+  5. To manage shared drive membership, the user must have role=organizer. Only users and groups can be members of shared drives.
+
+
+ */
 
 /**
  * Create a drive.
