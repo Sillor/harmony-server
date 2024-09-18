@@ -9,13 +9,15 @@ const teamRoutes = require('../Database/teamManagement.js');
 const authRoutes = require('../Database/userAuth.js');
 const userUtilsRoutes = require('../Database/userUtilities.js');
 const userToUserRoutes = require('../Database/userToUser.js');
-const fileRoutes = require("../user-to-user-fileshare/userFileShare")
+const fileRoutes = require("../user-to-user-fileshare/userFileShare");
+const gmailAuthRoute = require("../Database/gmailAuth")
 
 router.use("/api/users" , authRoutes)
 
 router.use(authenticateToken);
 
 router.use('/api/calendar', calendarRoutes);
+router.use('/api/database', gmailAuthRoute)
 
 router.use("/api/chat", chatRoutes);
 router.use("/api/peerchat", peerChatRoutes);
