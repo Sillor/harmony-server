@@ -15,9 +15,6 @@ router.use(express.json());
 router.use(cookieParser())
 
 //Endpoints
-// Google auth register
-
-//Google auth login
 
 /**
  * Register a new user
