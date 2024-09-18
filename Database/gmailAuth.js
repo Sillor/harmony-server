@@ -1,71 +1,42 @@
 require("dotenv").config()
-const fs = require('fs').promises;
-const path = require('path');
-const router = require('express').Router();
-const process = require('process');
-const {authenticate} = require('@google-cloud/local-auth');
-const {google} = require('googleapis');
+const express = require('express');
+const { OAuth2Client } = require('google-auth-library');
+const cookieSession = require('cookie-session');
 
-// If modifying these scopes, delete token.json.
-const SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly'];
-// The file token.json stores the user's access and refresh tokens, and is
-// created automatically when the authorization flow completes for the first
-// time.
-const TOKEN_PATH = path.join(process.cwd(), 'Database/gmailAuthStorage/token.json');
-const CREDENTIALS_PATH = path.join(process.cwd(), 'Database/gmailAuthStorage/credentials.json');
+const router = express.Router();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, 'http://localhost:3000/auth/google/callback');
 
-/**
- * Reads previously authorized credentials from the save file.
- *
- * @return {Promise<OAuth2Client|null>}
- */
-async function loadSavedCredentialsIfExist() {
-  try {
-    const content = await fs.readFile(TOKEN_PATH);
-    const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials);
-  } catch (err) {
-    return null;
-  }
-}
+router.use(cookieSession({
+  name: 'session',
+  keys: ['your-secret-key'],
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}));
 
-/**
- * Serializes credentials to a file compatible with GoogleAuth.fromJSON.
- *
- * @param {OAuth2Client} client
- * @return {Promise<void>}
- */
-async function saveCredentials(client) {
-  const content = await fs.readFile(CREDENTIALS_PATH);
-  const keys = JSON.parse(content);
-  const key = keys.installed || keys.web;
-  const payload = JSON.stringify({
-    type: 'authorized_user',
-    client_id: key.client_id,
-    client_secret: key.client_secret,
-    refresh_token: client.credentials.refresh_token,
+router.get('/auth/google', (req, res) => {
+  const url = client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['profile', 'email']
   });
-  await fs.writeFile(TOKEN_PATH, payload);
-}
+  res.redirect(url);
+});
 
-/**
- * Load or request or authorization to call APIs.
- *
- */
-async function authorize() {
-  let client = await loadSavedCredentialsIfExist();
-  if (client) {
-    return client;
-  }
-  client = await authenticate({
-    scopes: SCOPES,
-    keyfilePath: CREDENTIALS_PATH,
+router.get('/auth/google/callback', async (req, res) => {
+  const { tokens } = await client.getToken(req.query.code);
+  client.setCredentials(tokens);
+  const ticket = await client.verifyIdToken({
+    idToken: tokens.id_token,
+    audience: process.env.GOOGLE_CLIENT_ID
   });
-  if (client.credentials) {
-    await saveCredentials(client);
-  }
-  return client;
-}
+  const payload = ticket.getPayload();
+  req.session.user = payload;
+  res.redirect('/');
+});
 
+router.get('/logout', (req, res) => {
+  req.session = null;
+  res.redirect('/');
+});
 
-module.exports = router
+router.get('/', (req, res) => {
+  res.send(req.session.user ? `Hello, ${req.session.user.name}` : 'Hello, Guest');
+});

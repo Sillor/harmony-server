@@ -95,7 +95,7 @@ authorize().then(listFiles).catch(console.error);
  * */
 async function createFolder() {
   // Get credentials and build service
-  // TODO (developer) - Use appropriate auth mechanism for your app
+  // TODO (developer) - Use appropriate auth mechanism for your router
 
   const {GoogleAuth} = require('google-auth-library');
   const {google} = require('googleapis');
@@ -128,7 +128,7 @@ async function createFolder() {
  * */
 async function downloadFile(realFileId) {
   // Get credentials and build service
-  // TODO (developer) - Use appropriate auth mechanism for your app
+  // TODO (developer) - Use appropriate auth mechanism for your router
 
   const {GoogleAuth} = require('google-auth-library');
   const {google} = require('googleapis');
@@ -197,7 +197,7 @@ async function markTrash(){
  * */
 async function createDrive() {
   // Get credentials and build service
-  // TODO (developer) - Use appropriate auth mechanism for your app
+  // TODO (developer) - Use appropriate auth mechanism for your router
 
   const {GoogleAuth} = require('google-auth-library');
   const {google} = require('googleapis');
@@ -233,7 +233,7 @@ async function createDrive() {
  * */
 async function recoverDrives(userEmail) {
   // Get credentials and build service
-  // TODO (developer) - Use appropriate auth mechanism for your app
+  // TODO (developer) - Use appropriate auth mechanism for your router
 
   const {GoogleAuth} = require('google-auth-library');
   const {google} = require('googleapis');
@@ -279,3 +279,106 @@ async function recoverDrives(userEmail) {
   }
   return drives;
 }
+
+
+// another iteration 
+
+const express = require('express');
+const { google } = require('googleapis');
+const fs = require('fs');
+const path = require('path');
+const db = require('./database');
+
+const router = express.Router();
+router.use(express.json());
+
+const SCOPES = ['https://www.googleapis.com/auth/drive'];
+const auth = new google.auth.OAuth2(
+  process.env.CLIENT_ID,
+  process.env.CLIENT_SECRET,
+  'http://localhost:3000/oauth2callback'
+);
+
+router.get('/auth', (req, res) => {
+  const authUrl = auth.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+  });
+  res.redirect(authUrl);
+});
+
+router.get('/oauth2callback', async (req, res) => {
+  const { tokens } = await auth.getToken(req.query.code);
+  auth.setCredentials(tokens);
+
+  await db.insert('tokens').values({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    scope: tokens.scope,
+    token_type: tokens.token_type,
+    expiry_date: tokens.expiry_date,
+  });
+
+  res.send('Authentication successful! You can close this window.');
+});
+
+const drive = google.drive({ version: 'v3', auth });
+
+router.post('/create', async (req, res) => {
+  const fileMetadata = {
+    name: req.body.name,
+  };
+  const media = {
+    mimeType: req.body.mimeType,
+    body: fs.createReadStream(req.body.filePath),
+  };
+  try {
+    const file = await drive.files.create({
+      resource: fileMetadata,
+      media: media,
+      fields: 'id',
+    });
+    res.status(200).send(`File created with ID: ${file.data.id}`);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+router.get('/view/:fileId', async (req, res) => {
+  try {
+    const file = await drive.files.get({
+      fileId: req.params.fileId,
+      fields: 'id, name, mimeType',
+    });
+    res.status(200).send(file.data);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+router.patch('/edit/:fileId', async (req, res) => {
+  const fileMetadata = {
+    name: req.body.name,
+  };
+  try {
+    const file = await drive.files.update({
+      fileId: req.params.fileId,
+      resource: fileMetadata,
+      fields: 'id, name',
+    });
+    res.status(200).send(`File updated with ID: ${file.data.id}`);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+router.delete('/delete/:fileId', async (req, res) => {
+  try {
+    await drive.files.delete({
+      fileId: req.params.fileId,
+    });
+    res.status(200).send('File deleted successfully');
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
