@@ -118,4 +118,5 @@ module.exports = {
   teamsLinks,
   usersChats,
   usersLinks,
+  googleOAuth
 };

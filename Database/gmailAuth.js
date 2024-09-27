@@ -41,8 +41,8 @@ router.get('/auth/google', (req, res) => {
 
 //
 router.get('/auth/google/callback', async (req, res) => {
-  const { gmailOAuth } = await client.getToken(req.query.code);
-  client.setCredentials(gmailOAuth);
+  const { tokens } = await client.getToken(req.query.code);
+  client.setCredentials(tokens);
   const ticket = await client.verifyIdToken({
     idToken: tokens.id_token,
     audience: process.env.GOOGLE_CLIENT_ID
@@ -50,11 +50,11 @@ router.get('/auth/google/callback', async (req, res) => {
   const payload = ticket.getPayload();
 
   await db.insert('gmailOAuth').values({
-    accessToken: gmailOAuth.access_token,
-    refreshToken: gmailOAuth.refresh_token,
-    scope: gmailOAuth.scope,
-    tokenType: gmailOAuth.tokenType,
-    expiryDate: gmailOAuth.expiryDate,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    scope: tokens.scope,
+    token_type: tokens.token_type,
+    expiry_date: tokens.expiry_date,
   });
 
   req.session.user = payload;
