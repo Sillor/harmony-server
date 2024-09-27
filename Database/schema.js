@@ -88,6 +88,13 @@ const usersLinks = table("userslinks", {
   deleted: boolean("deleted").default(false),
 });
 
+const googleOAuth = table("gmailOAuth" , {
+  id: serial("id").primaryKey(),
+  authToken: varchar("authToken", {length: 255}),
+  refreshToken: varchar("refreshToken", {length: 255}),
+  certification: varchar("certification", {length: 255})
+})
+
 /**
  * @typedef {typeof users.$inferSelect} User
  * @typedef {typeof files.$inferSelect} File

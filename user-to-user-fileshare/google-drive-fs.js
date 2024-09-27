@@ -287,12 +287,12 @@ const express = require('express');
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
-const db = require('./database');
+//import queries
 
 const router = express.Router();
 router.use(express.json());
-
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
+
 const auth = new google.auth.OAuth2(
   process.env.CLIENT_ID,
   process.env.CLIENT_SECRET,
