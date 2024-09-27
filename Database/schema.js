@@ -5,6 +5,7 @@ const {
   integer,
   timestamp,
   pgTableCreator,
+  date
 } = require("drizzle-orm/pg-core")
 
 const table = pgTableCreator((name) => `harmony_${name}`)
@@ -92,7 +93,9 @@ const googleOAuth = table("gmailOAuth" , {
   id: serial("id").primaryKey(),
   authToken: varchar("authToken", {length: 255}),
   refreshToken: varchar("refreshToken", {length: 255}),
-  certification: varchar("certification", {length: 255})
+  scope: text("scope"),
+  tokenType: varchar("tokenType", {length: 255}),
+  expiryDate: date("expiryDate")
 })
 
 /**
