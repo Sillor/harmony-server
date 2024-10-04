@@ -10,9 +10,11 @@ const authRoutes = require('../Database/userAuth.js');
 const userUtilsRoutes = require('../Database/userUtilities.js');
 const userToUserRoutes = require('../Database/userToUser.js');
 const fileRoutes = require("../user-to-user-fileshare/userFileShare")
+const googleOAuthRoute = require("../Database/gmailAuth.js")
 
 router.use("/api/users" , authRoutes)
 
+router.use("/api/auth/google" , googleOAuthRoute)
 router.use(authenticateToken);
 
 router.use('/api/calendar', calendarRoutes);
@@ -26,8 +28,10 @@ router.use("/api/database" , userToUserRoutes)
 router.use("/api/database" , userUtilsRoutes)
 router.use("/files", fileRoutes)
 
-
 function authenticateToken(req, res, next) {
+  //query google oauth db
+  
+  //if(oauth) jwtverify next()
   const value = req.headers.authorization;
   if (!value || !value.startsWith("Bearer ")) {
     return res.sendStatus(401);

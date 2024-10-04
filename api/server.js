@@ -31,7 +31,7 @@ const corsOrigin = (origin, callback) => {
 
 const io = new socketIo.Server(server, {
   cors: {
-    origin: corsOrigin,
+    origin:corsOrigin,
     methods: ["GET", "POST"],
   }
 })

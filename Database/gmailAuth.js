@@ -1,13 +1,14 @@
-require("dotenv").config()
 const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
 const cookieSession = require('cookie-session');
+const { db,tables } = require("./db.js")
 
+require("dotenv").config()
 const router = express.Router();
 const client = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID, 
-  process.env.GOOGLE_CLIENT_SECRET, 
-  'http://localhost:3000/auth/google/callback'
+  process.env.GOOGLE_OAUTH_CLIENT, 
+  process.env.GOOGLE_OAUTH_SECRET, 
+  'http://localhost:5000/api/auth/google/callback'
 );
 
 /*
@@ -31,17 +32,22 @@ router.use(cookieSession({
 }));
 
 //send to consent window
-router.get('/auth/google', (req, res) => {
+router.get('/consent-window', (req, res) => {
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['profile', 'email']
   });
-  res.redirect(url);
+
+  //console.log(client, client.endpoints.tokenInfoUrl, client.endpoints.oauth2TokenUrl)
+  return res.json({url});
 });
 
 //
-router.get('/auth/google/callback', async (req, res) => {
+router.get('/callback', async (req, res) => {
+  try{
+    console.log("callback")
   const { tokens } = await client.getToken(req.query.code);
+  console.log("token check", tokens, client, typeof tokens.access_token)
   client.setCredentials(tokens);
   const ticket = await client.verifyIdToken({
     idToken: tokens.id_token,
@@ -54,18 +60,41 @@ router.get('/auth/google/callback', async (req, res) => {
     refreshToken: tokens.refresh_token,
     scope: tokens.scope,
     token_type: tokens.token_type,
-    expiry_date: tokens.expiry_date,
+    expiry_date: tokens.expiry_date, 
   });
 
   req.session.user = payload;
-  res.redirect('/');
+  res.redirect('http://localhost:5173/dashboard');
+  
+} catch(error){
+  console.log("error callback", error)
+}
 });
 
-router.get('/logout', (req, res) => {
-  req.session = null;
-  res.redirect('/');
+router.get('/logout', async (req, res) => {
+  if (req.session.user) {
+      const token = client.credentials.access_token;
+      const response = await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      })
+      response.then(() => {
+        req.session = null;
+        res.redirect('/');
+      })
+      response.catch((x) => {
+        console.error('Error revoking token:', error);
+        res.status(500).send('Logout failed');
+      })
+  } else {
+    res.redirect('/');
+  }
 });
 
 router.get('/', (req, res) => {
   res.send(req.session.user ? `Hello, ${req.session.user.name}` : 'Hello, Guest');
 });
+
+module.exports = router
