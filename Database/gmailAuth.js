@@ -1,7 +1,12 @@
 const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
-const cookieSession = require('cookie-session');
-const { db,tables } = require("./db.js")
+const session = require('express-session');
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const {createUid} = require("./queries/general.js")
+const { db,tables } = require("./db.js");
+const {eq} = require("drizzle-orm")
+const { findUser, createUser } = require('./queries/user.js');
 
 require("dotenv").config()
 const router = express.Router();
@@ -10,6 +15,7 @@ const client = new OAuth2Client(
   process.env.GOOGLE_OAUTH_SECRET, 
   'http://localhost:5000/api/auth/google/callback'
 );
+
 
 /*
 Need to create token table and credentials table to store tokens and credentials
@@ -24,11 +30,16 @@ Need queries
 Will need to compare token of acct signing in
 Will need to compare credentials of http cookie to db
 */
-
-router.use(cookieSession({
+router.use(session({
   name: 'session',
-  keys: ['your-secret-key'],
-  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  secret: process.env.JWT_KEY,
+  resave: false,
+  saveUninitialized: false, // 24 hours,
+  cookie:{
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: false,
+    sameSite: 'strict'
+  }
 }));
 
 //send to consent window
@@ -38,63 +49,112 @@ router.get('/consent-window', (req, res) => {
     scope: ['profile', 'email']
   });
 
-  //console.log(client, client.endpoints.tokenInfoUrl, client.endpoints.oauth2TokenUrl)
   return res.json({url});
 });
-
-//
+ 
 router.get('/callback', async (req, res) => {
   try{
-    console.log("callback")
-  const { tokens } = await client.getToken(req.query.code);
-  console.log("token check", tokens, client, typeof tokens.access_token)
-  client.setCredentials(tokens);
-  const ticket = await client.verifyIdToken({
-    idToken: tokens.id_token,
-    audience: process.env.GOOGLE_CLIENT_ID
-  });
-  const payload = ticket.getPayload();
+    const uid = createUid()
+    const { tokens } = await client.getToken(req.query.code);
+    client.setCredentials(tokens);
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    const existingUser = await findUser(payload.email)
 
-  await db.insert('gmailOAuth').values({
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    scope: tokens.scope,
-    token_type: tokens.token_type,
-    expiry_date: tokens.expiry_date, 
-  });
+    if(!existingUser){
+      const linkUID = Array.from(Array(254), () => Math.floor(Math.random() * 36).toString(36)).join('')
+      const hashedPW = await bcrypt.hash("NoPassword", 10)
+      const hashedLinkHead = await bcrypt.hash(payload.email, 10)
 
-  req.session.user = payload;
-  res.redirect('http://localhost:5173/dashboard');
-  
-} catch(error){
-  console.log("error callback", error)
-}
-});
+      const userCallLink = `${hashedLinkHead}/${linkUID}`
+      await db.insert(tables.users).values({
+        email: payload.email,
+        username: payload.given_name,
+        password: hashedPW,
+        userCallLink
+      })
+    }else{
+      console.log("user Exists, will not add to user table")
+    }
 
-router.get('/logout', async (req, res) => {
-  if (req.session.user) {
-      const token = client.credentials.access_token;
-      const response = await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      })
-      response.then(() => {
-        req.session = null;
-        res.redirect('/');
-      })
-      response.catch((x) => {
-        console.error('Error revoking token:', error);
-        res.status(500).send('Logout failed');
-      })
-  } else {
-    res.redirect('/');
+    if(tokens){
+      try{
+        let expiryDate = new Date(tokens.expiry_date)
+      
+        await db.insert(tables.gmailOAuth).values({
+          uid,
+          email: payload.email,
+          authToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          scope: tokens.scope,
+          tokenType: tokens.token_type,
+          expiryDate, 
+        });
+
+      } catch (error) {
+        console.log("error db ", error)
+      }
+    }
+    let authorization = tokens.token_type + " " + tokens.access_token;
+    const user = {"email": payload.email, "username": payload.name, "token": authorization}
+    //JWT FIX THIS AND REQ.USER
+    const accessToken = await jwt.sign(user, process.env.JWT_KEY, {expiresIn:'2h'});
+    //console.log("tokens",tokens, "ticket", ticket)
+    //this sets the cookies as session in the front end
+    req.session.user = payload; 
+    res.cookie("token", accessToken, { httpOnly: true, secure: false, maxAge: 7200000 })
+    res.redirect('http://localhost:5173/');
+  } catch(error){
+    console.log("error callback", error)
   }
 });
 
-router.get('/', (req, res) => {
-  res.send(req.session.user ? `Hello, ${req.session.user.name}` : 'Hello, Guest');
+router.get('/session-info', async (req, res) => {
+  let userSession = req.session
+  //await db.delete(tables.gmailOAuth).where(eq(tables.gmailOAuth.email, "lawrenceclemente6@gmail.com"))  
+
+  if (userSession) { 
+    res.json({ status: 200,  user: userSession.user, message: 'success' });
+  } else {
+    res.json({ status:401, message: 'Unauthorized' });
+  }
+});
+
+router.get('/token-info/:email', async (req, res) => {
+  let tokenInfo = await db.select().from(tables.gmailOAuth).where(eq(tables.gmailOAuth.email, req.params.email ))
+  return res.json({tokenInfo: tokenInfo[0]})
+})
+
+router.get('/logout/:token', async (req, res) => {
+  let headers = req.headers.cookie
+  let info = extractToken(headers)
+  let token = info.token.split(' ')[1]
+  await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+  })
+  
+  await db.delete(tables.gmailOAuth).where(eq(tables.gmailOAuth.authToken, token))  
+
+  req.session.destroy(err => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Logout failed' });
+    } 
+    res.clearCookie('token')
+    res.clearCookie('session')
+    res.json({status:200, success: true , message:"logged out"})
+  })
 });
 
 module.exports = router
+
+const extractToken = (headerString) => {
+  const tokenMatch = headerString.match(/token=([^;]+)/);
+  const decoded = jwt.verify(tokenMatch[1], process.env.JWT_KEY)
+  return tokenMatch ? decoded : null;
+};

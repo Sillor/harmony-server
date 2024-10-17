@@ -77,8 +77,8 @@ router.post("/loginUser",
             // Password Validation
             //const compare = user && validatePassword(req.body.password) && await bcrypt.compare(req.body.password, user.securePassword);
             const compare = user && await bcrypt.compare(req.body.password, user.password);
-
-            if (!compare) {
+            const googleUserCheck = await bcrypt.compare("NoPassword", user.password)
+            if (!compare || googleUserCheck) {
                 res.status(401).json({ "success": false, "message": "Incorrect username or password." });
                 return;
             }

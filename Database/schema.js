@@ -69,7 +69,7 @@ const teamsLinks = table("teamslinks", {
   teamId: integer("teamId").notNull(),
   addUser: integer("addUser"),
   deleted: boolean("deleted").default(false),
-});
+}); 
 
 const usersChats = table("userschats", {
   id: serial("id").primaryKey(),
@@ -90,12 +90,14 @@ const usersLinks = table("userslinks", {
   deleted: boolean("deleted").default(false),
 });
 
-const googleOAuth = table("gmailOAuth" , {
+const gmailOAuth = table("gmailOAuth" , {
   id: serial("id").primaryKey(),
+  uid: varchar("uid", {length: 255}),
+  email: varchar("email", {length: 255}),
   authToken: varchar("authToken", {length: 255}),
-  refreshToken: varchar("refreshToken", {length: 455}),
+  refreshToken: varchar("refreshToken", {length: 255}),
   scope: text("scope"),
-  tokenType: varchar("tokenType", {length: 255}),
+  tokenType: varchar("tokenType", {length: 100}),
   expiryDate: date("expiryDate")
 })
 
@@ -119,5 +121,5 @@ module.exports = {
   teamsLinks,
   usersChats,
   usersLinks,
-  googleOAuth
+  gmailOAuth
 };

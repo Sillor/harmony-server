@@ -13,8 +13,8 @@ const fileRoutes = require("../user-to-user-fileshare/userFileShare")
 const googleOAuthRoute = require("../Database/gmailAuth.js")
 
 router.use("/api/users" , authRoutes)
-
 router.use("/api/auth/google" , googleOAuthRoute)
+
 router.use(authenticateToken);
 
 router.use('/api/calendar', calendarRoutes);
@@ -29,10 +29,8 @@ router.use("/api/database" , userUtilsRoutes)
 router.use("/files", fileRoutes)
 
 function authenticateToken(req, res, next) {
-  //query google oauth db
-  
-  //if(oauth) jwtverify next()
-  const value = req.headers.authorization;
+  const value = req.headers.authorization ;
+  console.log("check authenticate", value, req.headers)
   if (!value || !value.startsWith("Bearer ")) {
     return res.sendStatus(401);
   }
