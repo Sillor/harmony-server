@@ -169,7 +169,6 @@ router.delete("/deleteAvatar", async (req, res) => {
 // Get user data
 router.get("/getUser", async (req, res) => {
   try {
-    console.log("get user check", req.user)
     const user = await findUser(req.user.email);
     const userId = user.id;
       

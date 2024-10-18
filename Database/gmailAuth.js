@@ -6,7 +6,7 @@ const bcrypt = require("bcrypt");
 const {createUid} = require("./queries/general.js")
 const { db,tables } = require("./db.js");
 const {eq} = require("drizzle-orm")
-const { findUser, createUser } = require('./queries/user.js');
+const { findUser } = require('./queries/user.js');
 
 require("dotenv").config()
 const router = express.Router();
@@ -16,25 +16,11 @@ const client = new OAuth2Client(
   'http://localhost:5000/api/auth/google/callback'
 );
 
-
-/*
-Need to create token table and credentials table to store tokens and credentials
-When a user registers, assign token to user 
-When a user logs in, assign credentials to cookie session
-
-Need queries
-1. add token and credentials
-2. obtain token and credentials
-3. delete token and credentials
-
-Will need to compare token of acct signing in
-Will need to compare credentials of http cookie to db
-*/
 router.use(session({
   name: 'session',
   secret: process.env.JWT_KEY,
   resave: false,
-  saveUninitialized: false, // 24 hours,
+  saveUninitialized: false,
   cookie:{
     maxAge: 24 * 60 * 60 * 1000,
     secure: false,
@@ -83,7 +69,6 @@ router.get('/callback', async (req, res) => {
     if(tokens){
       try{
         let expiryDate = new Date(tokens.expiry_date)
-      
         await db.insert(tables.gmailOAuth).values({
           uid,
           email: payload.email,
@@ -98,14 +83,10 @@ router.get('/callback', async (req, res) => {
         console.log("error db ", error)
       }
     }
-    let authorization = tokens.token_type + " " + tokens.access_token;
-    const user = {"email": payload.email, "username": payload.name, "token": authorization}
-    //JWT FIX THIS AND REQ.USER
-    const accessToken = await jwt.sign(user, process.env.JWT_KEY, {expiresIn:'2h'});
-    //console.log("tokens",tokens, "ticket", ticket)
-    //this sets the cookies as session in the front end
-    req.session.user = payload; 
-    res.cookie("token", accessToken, { httpOnly: true, secure: false, maxAge: 7200000 })
+    const authDetails = {"email": payload.email, "username": payload.name, "accessToken": tokens.access_token}
+    const accessToken = jwt.sign(authDetails, process.env.JWT_KEY, {expiresIn:'2h'});
+    req.session.user = {payload:payload, authDetails:authDetails, token: accessToken};
+    
     res.redirect('http://localhost:5173/');
   } catch(error){
     console.log("error callback", error)
@@ -113,8 +94,7 @@ router.get('/callback', async (req, res) => {
 });
 
 router.get('/session-info', async (req, res) => {
-  let userSession = req.session
-  //await db.delete(tables.gmailOAuth).where(eq(tables.gmailOAuth.email, "lawrenceclemente6@gmail.com"))  
+  let userSession = req.session;
 
   if (userSession) { 
     res.json({ status: 200,  user: userSession.user, message: 'success' });
@@ -127,34 +107,25 @@ router.get('/token-info/:email', async (req, res) => {
   let tokenInfo = await db.select().from(tables.gmailOAuth).where(eq(tables.gmailOAuth.email, req.params.email ))
   return res.json({tokenInfo: tokenInfo[0]})
 })
-
 router.get('/logout/:token', async (req, res) => {
-  let headers = req.headers.cookie
-  let info = extractToken(headers)
-  let token = info.token.split(' ')[1]
+  let token = req.params.token
   await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   })
-  
+
   await db.delete(tables.gmailOAuth).where(eq(tables.gmailOAuth.authToken, token))  
 
   req.session.destroy(err => {
     if (err) {
       return res.status(500).json({ success: false, message: 'Logout failed' });
-    } 
-    res.clearCookie('token')
+    }
+    
     res.clearCookie('session')
     res.json({status:200, success: true , message:"logged out"})
   })
 });
 
 module.exports = router
-
-const extractToken = (headerString) => {
-  const tokenMatch = headerString.match(/token=([^;]+)/);
-  const decoded = jwt.verify(tokenMatch[1], process.env.JWT_KEY)
-  return tokenMatch ? decoded : null;
-};

@@ -29,8 +29,7 @@ router.use("/api/database" , userUtilsRoutes)
 router.use("/files", fileRoutes)
 
 function authenticateToken(req, res, next) {
-  const value = req.headers.authorization ;
-  console.log("check authenticate", value, req.headers)
+  const value = req.headers.authorization;
   if (!value || !value.startsWith("Bearer ")) {
     return res.sendStatus(401);
   }
