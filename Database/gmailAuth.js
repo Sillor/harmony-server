@@ -7,6 +7,7 @@ const {createUid} = require("./queries/general.js")
 const { db,tables } = require("./db.js");
 const {eq} = require("drizzle-orm")
 const { findUser } = require('./queries/user.js');
+const { google } = require('googleapis');
 
 require("dotenv").config()
 const router = express.Router();
@@ -15,7 +16,7 @@ const client = new OAuth2Client(
   process.env.GOOGLE_OAUTH_SECRET, 
   'http://localhost:5000/api/auth/google/callback'
 );
-
+console.log("gmailAuth file")
 router.use(session({
   name: 'session',
   secret: process.env.JWT_KEY,
@@ -28,11 +29,34 @@ router.use(session({
   }
 }));
 
+router.post('/drive/info', (req,res) => {
+  const drive = google.drive('v3');
+  drive.files.list({
+    auth: client,
+    pageSize: 10,
+    fields: 'nextPageToken, files(id, name)',
+  }, (err1, res1) => {
+    if (err1) return console.log('The API returned an error: ' + err1);
+    const files = res1.data.files;
+    if (files.length) {
+      console.log('Files:');
+      files.map((file) => {
+        console.log(`${file.name} (${file.id})`);
+      });
+    } else {
+      console.log('No files found.');
+    }
+  });
+  res.json({"message": "you got the fileis matey"})
+})
+
 //send to consent window
 router.get('/consent-window', (req, res) => {
   const url = client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['profile', 'email']
+    scope: ['https://www.googleapis.com/auth/userinfo.profile', 
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/drive.file']
   });
 
   return res.json({url});
@@ -76,16 +100,19 @@ router.get('/callback', async (req, res) => {
           refreshToken: tokens.refresh_token,
           scope: tokens.scope,
           tokenType: tokens.token_type,
-          expiryDate, 
+          expiryDate,
         });
+       
+        const authDetails = {"email": payload.email, "username": payload.name, "accessToken": tokens.access_token}
+        const accessToken = jwt.sign(authDetails, process.env.JWT_KEY, {expiresIn:'12h'});
+        req.session.user = {payload:payload, authDetails:authDetails, token: accessToken, gmail:true};
 
       } catch (error) {
         console.log("error db ", error)
+        res.json({"message": "error"});
+        return
       }
     }
-    const authDetails = {"email": payload.email, "username": payload.name, "accessToken": tokens.access_token}
-    const accessToken = jwt.sign(authDetails, process.env.JWT_KEY, {expiresIn:'2h'});
-    req.session.user = {payload:payload, authDetails:authDetails, token: accessToken};
     
     res.redirect('http://localhost:5173/');
   } catch(error){
@@ -104,9 +131,25 @@ router.get('/session-info', async (req, res) => {
 });
 
 router.get('/token-info/:email', async (req, res) => {
+  //console.log("check session", req.session)
   let tokenInfo = await db.select().from(tables.gmailOAuth).where(eq(tables.gmailOAuth.email, req.params.email ))
-  return res.json({tokenInfo: tokenInfo[0]})
+  
+ /*  let decodedToken = jwt.verify(tokenInfo[0].authToken, process.env.JWT_KEY , (err, user) => {
+    if(err){
+      console.log("auth expired")
+      let refreshToken = jwt.sign(tokenInfo[0].refreshToken, process.env.JWT_KEY, (err, user) => {
+        if(err){
+          console.log("refresh sign err")
+        }
+        res.json({authToken: refreshToken})
+      })
+      return 
+    }
+  }) */
+  //console.log("check tokenInfo", decodedToken)
+  return res.json({tokenInfo: tokenInfo[0], expired: false})
 })
+
 router.get('/logout/:token', async (req, res) => {
   let token = req.params.token
   await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
@@ -128,4 +171,5 @@ router.get('/logout/:token', async (req, res) => {
   })
 });
 
-module.exports = router
+
+module.exports = {router, client}
