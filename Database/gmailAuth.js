@@ -29,8 +29,84 @@ router.use(session({
   }
 }));
 
+//callback functions for files
+async function createFolder (accessToken, folderName, body) {
+
+  try {
+    const drive = google.drive({ version: 'v3', auth: accessToken });
+    console.log("creating folder")
+    const fileMetadata = {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+    };
+    console.log("file meta data", fileMetadata, "/n", body)
+    const folder = await drive.files.create({
+      requestBody: fileMetadata,
+      fields: folderName
+    });
+    return folder.data.id;
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    throw error;
+  }
+}
+
+async function addFile (accessToken, folderName, body) {
+
+  try {
+    const drive = google.drive({ version: 'v3', auth: accessToken });
+    console.log("creating folder")
+    const fileMetadata = {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+    };
+    console.log("file meta data", fileMetadata, "/n", body)
+    const folder = await drive.files.create({
+      requestBody: fileMetadata,
+      fields: folderName
+    });
+    return folder.data.id;
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    throw error;
+  }
+}
+
+//api endpoints start
+
+//add folder work on this 12/10/24
+
+router.post('/drive/folder/:chatId', async (req, res) => {
+  const folderName = req.params.chatId;
+  console.log("folder name", folderName)
+  try {
+    const folder = await createFolder(client, folderName, req.body);
+    res.json(folder);
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+})
+
+//add file work on this 12/11/24
+
+router.post('/drive/files/upload/:chatId', async (req, res) => {
+  const folderName = req.params.chatId;
+  console.log(folderName)
+  try {
+    const addToFolder = await addFile(client, folderName, req.body);
+    res.json(addToFolder);
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+})
+
+//view folder info done 11/27/24
+
 router.post('/drive/info', (req,res) => {
   const drive = google.drive('v3');
+  const fileList = []
   drive.files.list({
     auth: client,
     pageSize: 10,
@@ -42,13 +118,16 @@ router.post('/drive/info', (req,res) => {
       console.log('Files:');
       files.map((file) => {
         console.log(`${file.name} (${file.id})`);
+        fileList.push(file)
       });
     } else {
       console.log('No files found.');
     }
   });
-  res.json({"message": "you got the fileis matey"})
+  return res.json({"message": "you got the files matey", "folders": fileList})
 })
+
+
 
 //send to consent window
 router.get('/consent-window', (req, res) => {
