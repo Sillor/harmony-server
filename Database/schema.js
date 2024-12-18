@@ -98,7 +98,7 @@ const gmailOAuth = table("gmailOAuth" , {
   refreshToken: varchar("refreshToken", {length: 255}),
   scope: text("scope"),
   tokenType: varchar("tokenType", {length: 100}),
-  expiryDate: date("expiryDate")
+  expiryDate: timestamp("expiryDate")
 })
 
 /**
