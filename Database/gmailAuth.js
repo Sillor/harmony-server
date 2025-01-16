@@ -1,13 +1,16 @@
 const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
 const session = require('express-session');
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
-const {createUid} = require("./queries/general.js")
-const { db,tables } = require("./db.js");
-const {eq} = require("drizzle-orm")
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const {createUid} = require('./queries/general.js')
+const { db,tables } = require('./db.js');
+const {eq} = require('drizzle-orm')
 const { findUser } = require('./queries/user.js');
 const { google } = require('googleapis');
+const fs = require('fs');
+const multer = require('multer');
+const path = require('path');
 
 require("dotenv").config()
 const router = express.Router();
@@ -16,7 +19,38 @@ const client = new OAuth2Client(
   process.env.GOOGLE_OAUTH_SECRET, 
   'http://localhost:5000/api/auth/google/callback'
 );
-console.log("gmailAuth file")
+
+function cleanFileName(dir) {
+  if(typeof dir !== 'string'){
+      return dir
+  }
+  if (!dir.includes(".")) {
+    return {
+      name: dir,
+      id: null,
+      copy: -1,
+      extension: ""
+    }
+  }
+  const match = dir.match(/^([a-zA-Z0-9._-]+)(?: -id- ?(\d+))?(?: ?\((\d+)\))?\.([a-zA-Z0-9]+)$/)
+  const fileName = match[1]
+  const fileId = match[2] ? Number(match[2]) : null
+  const fileCopy = match[3] ? Number(match[3]) : -1
+  const fileExtension = match[4]
+  return {
+    name: fileName,
+    id: fileId,
+    copy: fileCopy,
+    extension: fileExtension
+  }
+}
+
+router.use((err, req, res, next) => {
+  console.log("check req in gmail Auth - gmailAuth.js 25", req.body, req.file, req.file.name)
+  if(err) console.log("error  file upload dependency", err)
+next()
+});
+
 router.use(session({
   name: 'session',
   secret: process.env.JWT_KEY,
@@ -29,59 +63,111 @@ router.use(session({
   }
 }));
 
+//multer setup
+const uploadDir = path.join(__dirname, '../uploads')
+
+router.use('*', (req, res, next) => {
+  req.serverUploadPath = path.join(uploadDir, 'temp');
+  if (!fs.existsSync(req.serverUploadPath)){
+      fs.mkdirSync(req.serverUploadPath, {recursive: true});
+      next();
+  }else{
+      next();
+  }
+})
+
+const storage = multer.diskStorage({
+  destination: async function (req, file, cb) {
+    console.log("check serverUploadPath", req.serverUploadPath)
+      cb(null, req.serverUploadPath);
+  },
+  filename: function (req, file, cb) { 
+      let cleanName = cleanFileName(file.originalname)
+      console.log("check file name = gmailAuth.js 91", file.originalname)
+      const uniqueSuffix = Date.now();
+      cb(null, cleanName.name+ '-id-'+ uniqueSuffix + '.' + cleanName.extension );
+  }
+});
+const upload = multer({ storage });
+
+
+////////////////////////////////////////////////////////////
 //callback functions for files
 async function createFolder (accessToken, folderName, body) {
 
   try {
     const drive = google.drive({ version: 'v3', auth: accessToken });
-    console.log("creating folder")
+    console.log("creating folder - gmailAuth.js 104")
+    //create metadata
     const fileMetadata = {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
     };
-    console.log("file meta data", fileMetadata, "/n", body)
+    console.log("file meta data - gmailAuth.js 109",body)
+    //add folder to google drive
     const folder = await drive.files.create({
-      requestBody: fileMetadata,
-      fields: folderName
+      requestBody: fileMetadata
     });
     return folder.data.id;
   } catch (error) {
-    console.error('Error creating folder:', error);
+    console.error('Error creating folder:', error, error.data);
     throw error;
   }
 }
 
-async function addFile (accessToken, folderName, body) {
+async function uploadFile (accessToken, folderId, fileInfo) {
+  try { 
+    const drive = google.drive({ version: 'v3', auth: accessToken }); 
+    const fileName = fileInfo && fileInfo.name;
+    const mimeType = fileInfo && fileInfo.mimetype;
+    const fileMetaData = { 
+      name: fileName, 
+      parents: [folderId], 
+    }
+    console.log("upload File - gmailAuth.js 128", fileName)
+    /*
+ file: {
+    name: 'test1-google-service-account.json',
+    data: <Buffer bytes>,
+    size: 2374,
+    encoding: '7bit',
+    tempFilePath: '',
+    truncated: false,
+    mimetype: 'application/json',
+    md5: '3bec3733fbe42b0292d563063ea111c0',
+    mv: [Function: mv]
+  }
+}
 
-  try {
-    const drive = google.drive({ version: 'v3', auth: accessToken });
-    console.log("creating folder")
-    const fileMetadata = {
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
+*/
+    // Include the folder ID in the parents property }; 
+    const media = { 
+      mimeType, 
+      body: fileName,
     };
-    console.log("file meta data", fileMetadata, "/n", body)
-    const folder = await drive.files.create({
-      requestBody: fileMetadata,
-      fields: folderName
-    });
-    return folder.data.id;
-  } catch (error) {
-    console.error('Error creating folder:', error);
-    throw error;
-  }
-}
 
-//api endpoints start
+    const file = await drive.files.create({ 
+        resource: fileMetaData, 
+        media: media, 
+        fields: 'id', // Retrieve the file ID 
+      }); 
+      return fileMetaData
+    }
+    catch (error) { 
+      console.error('Error uploading file - gmailAuth.js 144:', error); 
+      throw error;
+    }
+}
+/////////////////////////////////////////////////////////////
+//API endpoints Start
 
 //add folder work on this 12/10/24
 
 router.post('/drive/folder/:chatId', async (req, res) => {
   const folderName = req.params.chatId;
-  console.log("folder name", folderName)
   try {
-    const folder = await createFolder(client, folderName, req.body);
-    res.json(folder);
+    const file = await createFolder(client, folderName);
+    res.json(file);
   } catch (error) {
     console.error('Error creating folder:', error);
     res.status(500).json({ message: 'Server error' });
@@ -89,13 +175,15 @@ router.post('/drive/folder/:chatId', async (req, res) => {
 })
 
 //add file work on this 12/11/24
-
-router.post('/drive/files/upload/:chatId', async (req, res) => {
-  const folderName = req.params.chatId;
-  console.log(folderName)
+//for some reason body is not here
+router.post('/drive/files/upload/:chatId', upload.single('file'), async (req, res) => {
   try {
-    const addToFolder = await addFile(client, folderName, req.body);
-    res.json(addToFolder);
+ /*    const folderName = req.params.chatId;
+    const file = req.files && req.files.file;
+
+    console.log("check body files - gmailAuth.js 171", req.body, req.files, file)
+    const addToFolder = await uploadFile(client, folderName, file);
+    res.json({addToFolder, "message": "file upload success"}); */
   } catch (error) {
     console.error('Error creating folder:', error);
     res.status(500).json({ message: 'Server error' });
@@ -107,19 +195,23 @@ router.post('/drive/files/upload/:chatId', async (req, res) => {
 router.post('/drive/info', (req,res) => {
   const drive = google.drive('v3');
   const fileList = []
+
   drive.files.list({
     auth: client,
     pageSize: 10,
     fields: 'nextPageToken, files(id, name)',
   }, (err1, res1) => {
     if (err1) return console.log('The API returned an error: ' + err1);
+
     const files = res1.data.files;
+
     if (files.length) {
       console.log('Files:');
       files.map((file) => {
         console.log(`${file.name} (${file.id})`);
         fileList.push(file)
       });
+
     } else {
       console.log('No files found.');
     }
@@ -127,10 +219,11 @@ router.post('/drive/info', (req,res) => {
   return res.json({"message": "you got the files matey", "folders": fileList})
 })
 
-
-
+/////////////////////////////////////////////////////////////
+//Google Auth endpoints Start
 //send to consent window
 router.get('/consent-window', (req, res) => {
+  console.log("consnet window - gmailAuth.js 151")
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/userinfo.profile', 
@@ -209,11 +302,19 @@ router.get('/session-info', async (req, res) => {
   }
 });
 
-router.get('/token-info/:email', async (req, res) => {
+router.post('/token-info/:email', async (req, res) => {
   //console.log("check session", req.session)
   let tokenInfo = await db.select().from(tables.gmailOAuth).where(eq(tables.gmailOAuth.email, req.params.email ))
-  
- /*  let decodedToken = jwt.verify(tokenInfo[0].authToken, process.env.JWT_KEY , (err, user) => {
+  const expiryDate = tokenInfo && new Date(tokenInfo[tokenInfo.length-1].expiryDate).toLocaleString()
+  const todayDate =  new Date().toLocaleString()
+  const isExpired = expiryDate < todayDate || expiryDate === "Invalid Date"
+ /*  
+ setting refresh Token here
+ 1. set client credentials again
+ 2. set req.session.user
+ 
+
+ let decodedToken = jwt.verify(tokenInfo[0].authToken, process.env.JWT_KEY , (err, user) => {
     if(err){
       console.log("auth expired")
       let refreshToken = jwt.sign(tokenInfo[0].refreshToken, process.env.JWT_KEY, (err, user) => {
@@ -225,11 +326,14 @@ router.get('/token-info/:email', async (req, res) => {
       return 
     }
   }) */
-  //console.log("check tokenInfo", decodedToken)
-  return res.json({tokenInfo: tokenInfo[0], expired: false})
+  //console.log("check tokenInfo", decodedToken
+  return res.json({tokenInfo: tokenInfo[tokenInfo.length-1], expired: isExpired})
 })
 
-router.get('/logout/:token', async (req, res) => {
+//is this fetch req proper for revoking token?
+//should i select email instead of token?
+router.delete('/logout/:token', async (req, res) => {
+  console.log("check logout 330", req.body)
   let token = req.params.token
   await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
     method: 'POST',
@@ -237,7 +341,6 @@ router.get('/logout/:token', async (req, res) => {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   })
-
   await db.delete(tables.gmailOAuth).where(eq(tables.gmailOAuth.authToken, token))  
 
   req.session.destroy(err => {
