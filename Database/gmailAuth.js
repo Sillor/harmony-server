@@ -11,6 +11,7 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
+const fileUpload = require('express-fileupload');
 
 require("dotenv").config()
 const router = express.Router();
@@ -20,37 +21,12 @@ const client = new OAuth2Client(
   'http://localhost:5000/api/auth/google/callback'
 );
 
-function cleanFileName(dir) {
-  if(typeof dir !== 'string'){
-      return dir
-  }
-  if (!dir.includes(".")) {
-    return {
-      name: dir,
-      id: null,
-      copy: -1,
-      extension: ""
-    }
-  }
-  const match = dir.match(/^([a-zA-Z0-9._-]+)(?: -id- ?(\d+))?(?: ?\((\d+)\))?\.([a-zA-Z0-9]+)$/)
-  const fileName = match[1]
-  const fileId = match[2] ? Number(match[2]) : null
-  const fileCopy = match[3] ? Number(match[3]) : -1
-  const fileExtension = match[4]
-  return {
-    name: fileName,
-    id: fileId,
-    copy: fileCopy,
-    extension: fileExtension
-  }
-}
-
-router.use((err, req, res, next) => {
+/* router.use((err, req, res, next) => {
   console.log("check req in gmail Auth - gmailAuth.js 25", req.body, req.file, req.file.name)
   if(err) console.log("error  file upload dependency", err)
 next()
 });
-
+ */
 router.use(session({
   name: 'session',
   secret: process.env.JWT_KEY,
@@ -64,9 +40,14 @@ router.use(session({
 }));
 
 //multer setup
-const uploadDir = path.join(__dirname, '../uploads')
+const uploadDir = path.join(__dirname, '../uploads/temp')
 
-router.use('*', (req, res, next) => {
+//need fileUpload middleware to access req.files at endpoint
+router.use(fileUpload({
+  createParentPath: true,
+  preserveExtension: true,
+}));
+/* router.use('*', (req, res, next) => {
   req.serverUploadPath = path.join(uploadDir, 'temp');
   if (!fs.existsSync(req.serverUploadPath)){
       fs.mkdirSync(req.serverUploadPath, {recursive: true});
@@ -78,32 +59,34 @@ router.use('*', (req, res, next) => {
 
 const storage = multer.diskStorage({
   destination: async function (req, file, cb) {
-    console.log("check serverUploadPath", req.serverUploadPath)
       cb(null, req.serverUploadPath);
   },
   filename: function (req, file, cb) { 
-      let cleanName = cleanFileName(file.originalname)
-      console.log("check file name = gmailAuth.js 91", file.originalname)
-      const uniqueSuffix = Date.now();
-      cb(null, cleanName.name+ '-id-'+ uniqueSuffix + '.' + cleanName.extension );
+    console.log("file name check")
+      cb(null, file.originalname);
   }
 });
-const upload = multer({ storage });
+const upload = multer({ storage }); */
 
+async function obtainTeamName (chatId){
+  let teamName = await db.select().from(tables.teams).where(eq(tables.teams.uid, chatId))
+  return teamName[0]["name"]
+}
 
 ////////////////////////////////////////////////////////////
 //callback functions for files
-async function createFolder (accessToken, folderName, body) {
+async function createFolder (accessToken, folderId) {
 
   try {
     const drive = google.drive({ version: 'v3', auth: accessToken });
     console.log("creating folder - gmailAuth.js 104")
+    const teamName = obtainTeamName(folderId)
     //create metadata
     const fileMetadata = {
-      name: folderName,
+      name: teamName,
       mimeType: 'application/vnd.google-apps.folder',
     };
-    console.log("file meta data - gmailAuth.js 109",body)
+    
     //add folder to google drive
     const folder = await drive.files.create({
       requestBody: fileMetadata
@@ -115,42 +98,80 @@ async function createFolder (accessToken, folderName, body) {
   }
 }
 
-async function uploadFile (accessToken, folderId, fileInfo) {
+/* async function sendToGoogleDrive(filePath, {fileMetaData, mimeType, accessToken}){
+// use multer to obtain file data using filePath 
+  
+const drive = google.drive({ version: 'v3', auth: accessToken });  
+let fileData = fs.readFile(filePath, (err, data) => {
+  if(err) console.log("error reading file", err)
+  return data
+});
+console.log("check fileData read:", fileData)
+
+const media = { 
+mimeType, 
+body: filePath, //hopefully i dont need to use fs 
+};
+
+const file = await drive.files.create({ 
+  resource: fileMetaData, 
+  media: media, 
+  //fields: 'id', // Retrieve the file ID 
+}); 
+} */
+
+async function uploadFile (accessToken, folderId, fileInfo, req) {
   try { 
-    const drive = google.drive({ version: 'v3', auth: accessToken }); 
+    const drive = google.drive({ version: 'v3', auth: accessToken });  
     const fileName = fileInfo && fileInfo.name;
     const mimeType = fileInfo && fileInfo.mimetype;
+    const teamName = obtainTeamName(folderId)
+    const filePath =  fileInfo && path.join(req.serverUploadPath, fileName)
+
     const fileMetaData = { 
       name: fileName, 
-      parents: [folderId], 
+      parents: [teamName], 
     }
-    console.log("upload File - gmailAuth.js 128", fileName)
+    console.log("upload File - gmailAuth.js 128",fileName, filePath)
     /*
- file: {
-    name: 'test1-google-service-account.json',
-    data: <Buffer bytes>,
-    size: 2374,
-    encoding: '7bit',
-    tempFilePath: '',
-    truncated: false,
-    mimetype: 'application/json',
-    md5: '3bec3733fbe42b0292d563063ea111c0',
-    mv: [Function: mv]
-  }
-}
+    file: {
+        name: 'test1-google-service-account.json',
+        data: <Buffer bytes>,
+        size: 2374,
+        encoding: '7bit',
+        tempFilePath: '',
+        truncated: false,
+        mimetype: 'application/json',
+        md5: '3bec3733fbe42b0292d563063ea111c0',
+        mv: [Function: mv]
+      }
+    }
 
-*/
+    */
     // Include the folder ID in the parents property }; 
+      //const fileInfoObj = {fileMetaData, mimeType, accessToken}
+      //console.log(fileInfoObj, filePath)
+      //sendToGoogleDrive(filePath, fileInfoObj)
+//////////////////////////////////////////////////////////////////////////
+      let fileData = fs.readFile(filePath, (err, data) => {
+        if(err) console.log("error reading file", err)
+        console.log("file data check: ", data)
+        return data
+      });
+      console.log("check fileData read:", fileData)
+  
     const media = { 
       mimeType, 
-      body: fileName,
+      body: filePath, //hopefully i dont need to use fs 
     };
-
-    const file = await drive.files.create({ 
+  
+    const driveFile = await drive.files.create({ 
         resource: fileMetaData, 
         media: media, 
-        fields: 'id', // Retrieve the file ID 
+        //fields: 'id', // Retrieve the file ID 
       }); 
+   // console.log("check file", file)
+  
       return fileMetaData
     }
     catch (error) { 
@@ -158,6 +179,8 @@ async function uploadFile (accessToken, folderId, fileInfo) {
       throw error;
     }
 }
+
+
 /////////////////////////////////////////////////////////////
 //API endpoints Start
 
@@ -176,14 +199,18 @@ router.post('/drive/folder/:chatId', async (req, res) => {
 
 //add file work on this 12/11/24
 //for some reason body is not here
-router.post('/drive/files/upload/:chatId', upload.single('file'), async (req, res) => {
+router.post('/drive/files/upload/:chatId', /* upload.single("file"), */ async (req, res) => {
   try {
- /*    const folderName = req.params.chatId;
+    const folderName = req.params.chatId;
     const file = req.files && req.files.file;
-
-    console.log("check body files - gmailAuth.js 171", req.body, req.files, file)
-    const addToFolder = await uploadFile(client, folderName, file);
-    res.json({addToFolder, "message": "file upload success"}); */
+    const tempDir = path.join(uploadDir, file.name)
+    file.mv(tempDir, (err) =>{
+       console.log(err)
+      return err
+      })
+    console.log("endpoitn check", file)
+    //const addToFolder = await uploadFile(client, folderName, file, req);
+    res.json({/* addToFolder, */ "message": "file upload success"});
   } catch (error) {
     console.error('Error creating folder:', error);
     res.status(500).json({ message: 'Server error' });
